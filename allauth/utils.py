@@ -57,6 +57,8 @@ def generate_unique_username(txts):
             query = {USER_MODEL_USERNAME_FIELD + '__iexact': ret}
             User.objects.get(**query)
             i += 1
+        except User.MultipleObjectsReturned:
+            i += 1
         except User.DoesNotExist:
             return ret
 
