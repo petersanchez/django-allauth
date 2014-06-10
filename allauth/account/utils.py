@@ -313,7 +313,7 @@ def sync_user_email_addresses(user):
             # Bail out
             return
         EmailAddress.objects.create(user=user,
-                                    email=email,
+                                    email=email.lower(),
                                     primary=False,
                                     verified=False)
 
