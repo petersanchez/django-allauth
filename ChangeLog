@@ -1,3 +1,38 @@
+2014-08-12  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* SECURITY: the Persona provider now requires the `AUDIENCE`
+	parameter to be explicitly configured, as required by the Persona
+	specification for security reasons.
+
+
+2014-08-08  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* Storing social access tokens is now optional
+	(`SOCIALACCOUNT_STORE_TOKENS`).
+
+2014-07-26  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* Removed the inline Javascript from the `fbconnect.html`
+	template. This allows for a more strict `Content-Security-Policy`
+	(thanks to Andrean Franc).
+
+2014-07-25  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* `nimiq` contributed ORCID support, thanks.
+
+2014-07-22  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* All forms are now pluggable via a new setting:
+	`(SOCIAL)ACCOUNT_FORMS`.
+
+2014-07-05  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* James Thompson contributed Windows Live support, thanks!
+
+2014-06-16  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* Version 0.17.0 released.
+
 2014-06-06  Raymond Penners  <raymond.penners@intenct.nl>
 
 	* `sourenaraya` contributed Mail.Ru support, thanks.
@@ -5,6 +40,15 @@
 	* account: Justin Michalicek contributed support to control
 	session life time and age: `ACCOUNT_SESSION_COOKIE_AGE` and
 	`ACCOUNT_SESSION_REMEMBER`.
+
+2014-05-14  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* Serafeim Papastefanos contributed an Ukrainian translation,
+	thanks!
+
+2014-05-09  Raymond Penners  <raymond.penners@intenct.nl>
+
+	* `kkarwows` contributed AppConfig support, thanks.
 
 2014-04-29  Raymond Penners  <raymond.penners@intenct.nl>
 

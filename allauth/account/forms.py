@@ -18,7 +18,7 @@ from ..utils import (email_address_exists, get_user_model,
                      set_form_field_order)
 
 from .models import EmailAddress
-from .utils import perform_login, setup_user_email
+from .utils import perform_login, setup_user_email, user_username
 from .app_settings import AuthenticationMethod
 from . import app_settings
 from .adapter import get_adapter
@@ -55,6 +55,19 @@ class LoginForm(forms.Form):
                                   required=False)
 
     user = None
+    error_messages = {
+        'account_inactive':
+        _("This account is currently inactive."),
+
+        'email_password_mismatch':
+        _("The e-mail address and/or password you specified are not correct."),
+
+        'username_password_mismatch':
+        _("The username and/or password you specified are not correct."),
+
+        'username_email_password_mismatch':
+        _("The login and/or password you specified are not correct.")
+    }
 
     def __init__(self, *args, **kwargs):
         super(LoginForm, self).__init__(*args, **kwargs)
@@ -118,21 +131,13 @@ class LoginForm(forms.Form):
             if user.is_active:
                 self.user = user
             else:
-                raise forms.ValidationError(_("This account is currently"
-                                              " inactive."))
+                raise forms.ValidationError(
+                    self.error_messages['account_inactive'])
         else:
-            if app_settings.AUTHENTICATION_METHOD \
-                    == AuthenticationMethod.EMAIL:
-                error = _("The e-mail address and/or password you specified"
-                          " are not correct.")
-            elif app_settings.AUTHENTICATION_METHOD \
-                    == AuthenticationMethod.USERNAME:
-                error = _("The username and/or password you specified are"
-                          " not correct.")
-            else:
-                error = _("The login and/or password you specified are not"
-                          " correct.")
-            raise forms.ValidationError(error)
+            raise forms.ValidationError(
+                self.error_messages[
+                    '%s_password_mismatch'
+                    % app_settings.AUTHENTICATION_METHOD])
         return self.cleaned_data
 
     def login(self, request, redirect_url=None):
@@ -208,10 +213,9 @@ class BaseSignupForm(_base_signup_form_class()):
                                    attrs={'placeholder':
                                           _('Username'),
                                           'autofocus': 'autofocus'}))
-    email = forms.EmailField(widget=forms.TextInput(attrs=
-                                                    {'type': 'email',
-                                                     'placeholder':
-                                                     _('E-mail address')}))
+    email = forms.EmailField(widget=forms.TextInput(
+        attrs={'type': 'email',
+               'placeholder': _('E-mail address')}))
 
     def __init__(self, *args, **kwargs):
         email_required = kwargs.pop('email_required',
@@ -238,7 +242,7 @@ class BaseSignupForm(_base_signup_form_class()):
         # so that we make sure the inserted items are always
         # prepended.
         for field in reversed(field_order):
-            if not field in merged_field_order:
+            if field not in merged_field_order:
                 merged_field_order.insert(0, field)
         set_form_field_order(self, merged_field_order)
         if not self.username_required:
@@ -425,7 +429,7 @@ class ResetPasswordForm(forms.Form):
 
             # send the password reset email
             path = reverse("account_reset_password_from_key",
-                           kwargs=dict(uidb36=int_to_base36(user.id),
+                           kwargs=dict(uidb36=int_to_base36(user.pk),
                                        key=temp_key))
             url = '%s://%s%s' % (app_settings.DEFAULT_HTTP_PROTOCOL,
                                  current_site.domain,
@@ -433,6 +437,9 @@ class ResetPasswordForm(forms.Form):
             context = {"site": current_site,
                        "user": user,
                        "password_reset_url": url}
+            if app_settings.AUTHENTICATION_METHOD \
+                    != AuthenticationMethod.EMAIL:
+                context['username'] = user_username(user)
             get_adapter().send_mail('account/email/password_reset_key',
                                     email,
                                     context)

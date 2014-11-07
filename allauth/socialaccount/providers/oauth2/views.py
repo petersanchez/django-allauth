@@ -2,11 +2,13 @@ from __future__ import absolute_import
 
 from datetime import timedelta
 
+from django.core.exceptions import PermissionDenied
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 
 from allauth.utils import build_absolute_uri
+from allauth.account import app_settings
 from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount import providers
 from allauth.socialaccount.providers.oauth2.client import (OAuth2Client,
@@ -19,7 +21,7 @@ from ..base import AuthAction
 class OAuth2Adapter(object):
     expires_in_key = 'expires_in'
     supports_state = True
-    redirect_uri_protocol = None  # None -- don't switch
+    redirect_uri_protocol = None  # None: use ACCOUNT_DEFAULT_HTTP_PROTOCOL
     access_token_method = 'POST'
 
     def get_provider(self):
@@ -53,9 +55,11 @@ class OAuth2View(object):
 
     def get_client(self, request, app):
         callback_url = reverse(self.adapter.provider_id + "_callback")
+        protocol = (self.adapter.redirect_uri_protocol
+                    or app_settings.DEFAULT_HTTP_PROTOCOL)
         callback_url = build_absolute_uri(
             request, callback_url,
-            protocol=self.adapter.redirect_uri_protocol)
+            protocol=protocol)
         provider = self.adapter.get_provider()
         client = OAuth2Client(self.request, app.client_id, app.secret,
                               self.adapter.access_token_method,
@@ -83,7 +87,7 @@ class OAuth2LoginView(OAuth2View):
 
 class OAuth2CallbackView(OAuth2View):
     def dispatch(self, request):
-        if 'error' in request.GET or not 'code' in request.GET:
+        if 'error' in request.GET or 'code' not in request.GET:
             # TODO: Distinguish cancel from error
             return render_authentication_error(request)
         app = self.adapter.get_provider().get_app(self.request)
@@ -106,5 +110,5 @@ class OAuth2CallbackView(OAuth2View):
             else:
                 login.state = SocialLogin.unstash_state(request)
             return complete_social_login(request, login)
-        except OAuth2Error:
+        except (OAuth2Error, PermissionDenied):
             return render_authentication_error(request)
