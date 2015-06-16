@@ -15,17 +15,18 @@ except ImportError:
 import allauth.app_settings
 from allauth.account.models import EmailAddress
 from allauth.account.utils import get_next_redirect_url, setup_user_email
-from allauth.utils import (get_user_model, serialize_instance,
-                           deserialize_instance)
+from allauth.utils import (get_user_model, get_current_site,
+                           serialize_instance, deserialize_instance)
 
 from . import app_settings
 from . import providers
 from .fields import JSONField
+from ..utils import get_request_param
 
 
 class SocialAppManager(models.Manager):
-    def get_current(self, provider):
-        site = Site.objects.get_current()
+    def get_current(self, provider, request=None):
+        site = get_current_site(request)
         return self.get(sites__id=site.id,
                         provider=provider)
 
@@ -121,7 +122,7 @@ class SocialToken(models.Model):
     app = models.ForeignKey(SocialApp)
     account = models.ForeignKey(SocialAccount)
     token = models \
-        .TextField(verbose_name=_('social account'),
+        .TextField(verbose_name=_('token'),
                    help_text=_('"oauth_token" (OAuth1) or access token'
                                ' (OAuth2)'))
     token_secret = models \
@@ -167,22 +168,23 @@ class SocialLogin(object):
     e-mail addresses retrieved from the provider.
     """
 
-    def __init__(self, account=None, token=None, email_addresses=[]):
+    def __init__(self, user=None, account=None, token=None,
+                 email_addresses=[]):
         if token:
             assert token.account is None or token.account == account
-            token.account = account
         self.token = token
+        self.user = user
         self.account = account
         self.email_addresses = email_addresses
         self.state = {}
 
     def connect(self, request, user):
-        self.account.user = user
+        self.user = user
         self.save(request, connect=True)
 
     def serialize(self):
         ret = dict(account=serialize_instance(self.account),
-                   user=serialize_instance(self.account.user),
+                   user=serialize_instance(self.user),
                    state=self.state,
                    email_addresses=[serialize_instance(ea)
                                     for ea in self.email_addresses])
@@ -194,7 +196,6 @@ class SocialLogin(object):
     def deserialize(cls, data):
         account = deserialize_instance(SocialAccount, data['account'])
         user = deserialize_instance(get_user_model(), data['user'])
-        account.user = user
         if 'token' in data:
             token = deserialize_instance(SocialToken, data['token'])
         else:
@@ -217,7 +218,7 @@ class SocialLogin(object):
         the user may be an existing one (when connecting accounts)
         """
         assert not self.is_existing
-        user = self.account.user
+        user = self.user
         user.save()
         self.account.user = user
         self.account.save()
@@ -248,6 +249,7 @@ class SocialLogin(object):
             # Update account
             a.extra_data = self.account.extra_data
             self.account = a
+            self.user = self.account.user
             a.save()
             # Update token
             if app_settings.STORE_TOKENS and self.token:
@@ -279,7 +281,9 @@ class SocialLogin(object):
         next_url = get_next_redirect_url(request)
         if next_url:
             state['next'] = next_url
-        state['process'] = request.REQUEST.get('process', 'login')
+        state['process'] = get_request_param(request, 'process', 'login')
+        state['scope'] = get_request_param(request, 'scope', '')
+        state['auth_params'] = get_request_param(request, 'auth_params', '')
         return state
 
     @classmethod

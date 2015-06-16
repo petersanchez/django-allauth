@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 
 import requests
 from datetime import datetime, date
 
+import django
 from django.test import TestCase
 from django.db import models
 
@@ -10,7 +12,10 @@ from . import utils
 
 
 class MockedResponse(object):
-    def __init__(self, status_code, content, headers={}):
+    def __init__(self, status_code, content, headers=None):
+        if headers is None:
+            headers = {}
+
         self.status_code = status_code
         self.content = content.encode('utf8')
         self.headers = headers
@@ -56,7 +61,7 @@ class BasicTests(TestCase):
 
     def test_generate_unique_username(self):
         examples = [('a.b-c@gmail.com', 'a.b-c'),
-                    (u'Üsêrnamê', 'username'),
+                    ('Üsêrnamê', 'username'),
                     ('User Name', 'user_name'),
                     ('', 'user')]
         for input, username in examples:
@@ -64,25 +69,36 @@ class BasicTests(TestCase):
                              username)
 
     def test_email_validation(self):
-        s = 'unfortunately.django.user.email.max_length.is.set.to.75.which.is.too.short@bummer.com'
-        self.assertEqual(None, utils.valid_email_or_none(s))
-        s = 'this.email.address.is.a.bit.too.long.but.should.still.validate.ok@short.com'
+        is_email_max_75 = django.VERSION[:2] <= (1, 7)
+        if is_email_max_75:
+            s = 'unfortunately.django.user.email.max_length.is.set.to.75.which.is.too.short@bummer.com'  # noqa
+            self.assertEqual(None, utils.valid_email_or_none(s))
+        s = 'this.email.address.is.a.bit.too.long.but.should.still.validate.ok@short.com'  # noqa
         self.assertEqual(s, utils.valid_email_or_none(s))
-        s = 'x' + s
-        self.assertEqual(None, utils.valid_email_or_none(s))
-        self.assertEqual(None, utils.valid_email_or_none("Bad ?"))
+        if is_email_max_75:
+            s = 'x' + s
+            self.assertEqual(None, utils.valid_email_or_none(s))
+            self.assertEqual(None, utils.valid_email_or_none("Bad ?"))
 
     def test_serializer(self):
         class SomeModel(models.Model):
             dt = models.DateTimeField()
             t = models.TimeField()
             d = models.DateField()
+            
+        def method(self):
+            pass
+
         instance = SomeModel(dt=datetime.now(),
                              d=date.today(),
                              t=datetime.now().time())
+        # make sure serializer doesn't fail if a method is attached to the instance
+        instance.method = method
         instance.nonfield = 'hello'
         data = utils.serialize_instance(instance)
         instance2 = utils.deserialize_instance(SomeModel, data)
+        self.assertEqual(getattr(instance, 'method', None), method)
+        self.assertEqual(getattr(instance2, 'method', None), None)
         self.assertEqual(instance.nonfield, instance2.nonfield)
         self.assertEqual(instance.d, instance2.d)
         self.assertEqual(instance.dt.date(), instance2.dt.date())
@@ -91,6 +107,7 @@ class BasicTests(TestCase):
             self.assertEqual(t1.hour, t2.hour)
             self.assertEqual(t1.minute, t2.minute)
             self.assertEqual(t1.second, t2.second)
-            # AssertionError: datetime.time(10, 6, 28, 705776) != datetime.time(10, 6, 28, 705000)
+            # AssertionError: datetime.time(10, 6, 28, 705776)
+            #     != datetime.time(10, 6, 28, 705000)
             self.assertEqual(int(t1.microsecond / 1000),
                              int(t2.microsecond / 1000))

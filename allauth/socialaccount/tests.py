@@ -9,7 +9,6 @@ import json
 from django.test.utils import override_settings
 from django.test import TestCase
 from django.core.urlresolvers import reverse
-from django.contrib.sites.models import Site
 from django.test.client import RequestFactory
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
@@ -19,7 +18,7 @@ from ..tests import MockedResponse, mocked_response
 from ..account import app_settings as account_settings
 from ..account.models import EmailAddress
 from ..account.utils import user_email
-from ..utils import get_user_model
+from ..utils import get_user_model, get_current_site
 
 from .models import SocialApp, SocialAccount, SocialLogin
 from .helpers import complete_social_login
@@ -36,12 +35,12 @@ def create_oauth_tests(provider):
                                        client_id='app123id',
                                        key=provider.id,
                                        secret='dummy')
-        app.sites.add(Site.objects.get_current())
+        app.sites.add(get_current_site())
 
     @override_settings(SOCIALACCOUNT_AUTO_SIGNUP=False)
     def test_login(self):
         resp_mocks = self.get_mocked_response()
-        if not resp_mocks:
+        if resp_mocks is None:
             warnings.warn("Cannot test provider %s, no oauth mock"
                           % self.provider.id)
             return
@@ -49,14 +48,16 @@ def create_oauth_tests(provider):
         self.assertRedirects(resp, reverse('socialaccount_signup'))
         resp = self.client.get(reverse('socialaccount_signup'))
         sociallogin = resp.context['form'].sociallogin
-        data = dict(email=user_email(sociallogin.account.user),
+        data = dict(email=user_email(sociallogin.user),
                     username=str(random.randrange(1000, 10000000)))
         resp = self.client.post(reverse('socialaccount_signup'),
                                 data=data)
         self.assertEqual('http://testserver/accounts/profile/',
                          resp['location'])
-        self.assertFalse(resp.context['user'].has_usable_password())
-        return sociallogin.account
+        user = resp.context['user']
+        self.assertFalse(user.has_usable_password())
+        return SocialAccount.objects.get(user=user,
+                                         provider=self.provider.id)
 
     @override_settings(SOCIALACCOUNT_AUTO_SIGNUP=True,
                        SOCIALACCOUNT_EMAIL_REQUIRED=False,
@@ -85,19 +86,28 @@ def create_oauth_tests(provider):
         complete_url = reverse(self.provider.id+'_callback')
         self.assertGreater(q['oauth_callback'][0]
                            .find(complete_url), 0)
-        with mocked_response(MockedResponse(200,
-                                            'oauth_token=token&'
-                                            'oauth_token_secret=psst',
-                                            {'content-type':
-                                             'text/html'}),
+        with mocked_response(self.get_access_token_response(),
                              *resp_mocks):
             resp = self.client.get(complete_url)
         return resp
 
+    def get_access_token_response(self):
+        return MockedResponse(
+            200,
+            'oauth_token=token&oauth_token_secret=psst',
+            {'content-type': 'text/html'})
+
+    def test_authentication_error(self):
+        resp = self.client.get(reverse(self.provider.id + '_callback'))
+        self.assertTemplateUsed(resp,
+                                'socialaccount/authentication_error.html')
+
     impl = {'setUp': setUp,
             'login': login,
             'test_login': test_login,
-            'get_mocked_response': get_mocked_response}
+            'get_mocked_response': get_mocked_response,
+            'get_access_token_response': get_access_token_response,
+            'test_authentication_error': test_authentication_error}
     class_name = 'OAuth2Tests_'+provider.id
     Class = type(class_name, (TestCase,), impl)
     Class.provider = provider
@@ -124,7 +134,7 @@ def create_oauth2_tests(provider):
                                        client_id='app123id',
                                        key=provider.id,
                                        secret='dummy')
-        app.sites.add(Site.objects.get_current())
+        app.sites.add(get_current_site())
 
     @override_settings(SOCIALACCOUNT_AUTO_SIGNUP=False)
     def test_login(self):
@@ -198,6 +208,11 @@ def create_oauth2_tests(provider):
                                     'state': q['state'][0]})
         return resp
 
+    def test_authentication_error(self):
+        resp = self.client.get(reverse(self.provider.id + '_callback'))
+        self.assertTemplateUsed(resp,
+                                'socialaccount/authentication_error.html')
+
     impl = {'setUp': setUp,
             'login': login,
             'test_login': test_login,
@@ -205,7 +220,8 @@ def create_oauth2_tests(provider):
             'test_account_refresh_token_saved_next_login':
             test_account_refresh_token_saved_next_login,
             'get_login_response_json': get_login_response_json,
-            'get_mocked_response': get_mocked_response}
+            'get_mocked_response': get_mocked_response,
+            'test_authentication_error': test_authentication_error}
     class_name = 'OAuth2Tests_'+provider.id
     Class = type(class_name, (TestCase,), impl)
     Class.provider = provider
@@ -231,8 +247,8 @@ class SocialAccountTests(TestCase):
         setattr(user, account_settings.USER_MODEL_USERNAME_FIELD, 'test')
         setattr(user, account_settings.USER_MODEL_EMAIL_FIELD, 'test@test.com')
 
-        account = SocialAccount(user=user, provider='openid', uid='123')
-        sociallogin = SocialLogin(account)
+        account = SocialAccount(provider='openid', uid='123')
+        sociallogin = SocialLogin(user=user, account=account)
         complete_social_login(request, sociallogin)
 
         user = User.objects.get(

@@ -185,7 +185,7 @@ class AppSettings(object):
     @property
     def LOGIN_ON_EMAIL_CONFIRMATION(self):
         """
-        Autmatically log the user in once he confirmed his email address
+        Autmatically log the user in once they confirmed their email address
         """
         return self._setting('LOGIN_ON_EMAIL_CONFIRMATION', True)
 
@@ -196,6 +196,10 @@ class AppSettings(object):
     @property
     def LOGOUT_ON_GET(self):
         return self._setting('LOGOUT_ON_GET', False)
+
+    @property
+    def LOGOUT_ON_PASSWORD_CHANGE(self):
+        return self._setting('LOGOUT_ON_PASSWORD_CHANGE', False)
 
     @property
     def USER_MODEL_USERNAME_FIELD(self):

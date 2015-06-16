@@ -4,9 +4,6 @@ from allauth.socialaccount.providers.oauth2.views import (OAuth2Adapter,
                                                           OAuth2LoginView,
                                                           OAuth2CallbackView)
 
-from allauth.socialaccount.models import SocialLogin, SocialAccount
-from allauth.socialaccount.adapter import get_adapter
-
 from .provider import VKProvider
 
 
@@ -36,7 +33,7 @@ USER_FIELDS = ['first_name',
 class VKOAuth2Adapter(OAuth2Adapter):
     provider_id = VKProvider.id
     access_token_url = 'https://oauth.vk.com/access_token'
-    authorize_url = 'http://oauth.vk.com/authorize'
+    authorize_url = 'https://oauth.vk.com/authorize'
     profile_url = 'https://api.vk.com/method/users.get'
 
     def complete_login(self, request, app, token, **kwargs):
@@ -47,6 +44,9 @@ class VKOAuth2Adapter(OAuth2Adapter):
                                     'user_ids': uid})
         resp.raise_for_status()
         extra_data = resp.json()['response'][0]
+        email = kwargs['response'].get('email')
+        if email:
+            extra_data['email'] = email
         return self.get_provider().sociallogin_from_response(request,
                                                              extra_data)
 

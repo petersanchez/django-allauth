@@ -1,9 +1,6 @@
 import logging
 import requests
 
-from django.utils.cache import patch_response_headers
-from django.shortcuts import render
-
 
 from allauth.socialaccount.models import (SocialLogin,
                                           SocialToken)
@@ -15,14 +12,14 @@ from allauth.socialaccount.providers.oauth2.views import (OAuth2Adapter,
                                                           OAuth2CallbackView)
 
 from .forms import FacebookConnectForm
-from .provider import FacebookProvider
+from .provider import FacebookProvider, GRAPH_API_URL
 
 
 logger = logging.getLogger(__name__)
 
 
 def fb_complete_login(request, app, token):
-    resp = requests.get('https://graph.facebook.com/me',
+    resp = requests.get(GRAPH_API_URL + '/me',
                         params={'access_token': token.token})
     resp.raise_for_status()
     extra_data = resp.json()
@@ -36,7 +33,7 @@ class FacebookOAuth2Adapter(OAuth2Adapter):
     provider_id = FacebookProvider.id
 
     authorize_url = 'https://www.facebook.com/dialog/oauth'
-    access_token_url = 'https://graph.facebook.com/oauth/access_token'
+    access_token_url = GRAPH_API_URL + '/oauth/access_token'
     expires_in_key = 'expires'
 
     def complete_login(self, request, app, access_token, **kwargs):
@@ -49,6 +46,7 @@ oauth2_callback = OAuth2CallbackView.adapter_view(FacebookOAuth2Adapter)
 
 def login_by_token(request):
     ret = None
+    auth_exception = None
     if request.method == 'POST':
         form = FacebookConnectForm(request.POST)
         if form.is_valid():
@@ -60,7 +58,7 @@ def login_by_token(request):
                 access_token = form.cleaned_data['access_token']
                 if login_options.get('auth_type') == 'reauthenticate':
                     info = requests.get(
-                        'https://graph.facebook.com/oauth/access_token_info',
+                        GRAPH_API_URL + '/oauth/access_token_info',
                         params={'client_id': app.client_id,
                                 'access_token': access_token}).json()
                     nonce = provider.get_nonce(request, pop=True)
@@ -74,19 +72,11 @@ def login_by_token(request):
                     login.token = token
                     login.state = SocialLogin.state_from_request(request)
                     ret = complete_social_login(request, login)
-            except requests.RequestException:
+            except requests.RequestException as e:
                 logger.exception('Error accessing FB user profile')
+                auth_exception = e
     if not ret:
-        ret = render_authentication_error(request)
+        ret = render_authentication_error(request,
+                                          FacebookProvider.id,
+                                          exception=auth_exception)
     return ret
-
-
-def channel(request):
-    provider = providers.registry.by_id(FacebookProvider.id)
-    locale = provider.get_locale_for_request(request)
-    response = render(request, 'facebook/channel.html',
-                      {'facebook_jssdk_locale': locale})
-    cache_expire = 60 * 60 * 24 * 365
-    patch_response_headers(response, cache_expire)
-    response['Pragma'] = 'Public'
-    return response

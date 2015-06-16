@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import datetime
 
 from django.core.urlresolvers import reverse
@@ -9,6 +11,7 @@ from django.contrib.sites.models import Site
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.crypto import get_random_string
 
+from ..utils import build_absolute_uri
 from .. import app_settings as allauth_app_settings
 from . import app_settings
 from . import signals
@@ -24,6 +27,7 @@ class EmailAddress(models.Model):
     user = models.ForeignKey(allauth_app_settings.USER_MODEL,
                              verbose_name=_('user'))
     email = models.EmailField(unique=app_settings.UNIQUE_EMAIL,
+                              max_length=254,
                               verbose_name=_('e-mail address'))
     verified = models.BooleanField(verbose_name=_('verified'), default=False)
     primary = models.BooleanField(verbose_name=_('primary'), default=False)
@@ -37,7 +41,7 @@ class EmailAddress(models.Model):
             unique_together = [("user", "email")]
 
     def __str__(self):
-        return u"%s (%s)" % (self.email, self.user)
+        return "%s (%s)" % (self.email, self.user)
 
     def set_as_primary(self, conditional=False):
         old_primary = EmailAddress.objects.get_primary(self.user)
@@ -88,7 +92,7 @@ class EmailConfirmation(models.Model):
         verbose_name_plural = _("email confirmations")
 
     def __str__(self):
-        return u"confirmation for %s" % self.email_address
+        return "confirmation for %s" % self.email_address
 
     @classmethod
     def create(cls, email_address):
@@ -116,7 +120,9 @@ class EmailConfirmation(models.Model):
         current_site = kwargs["site"] if "site" in kwargs \
             else Site.objects.get_current()
         activate_url = reverse("account_confirm_email", args=[self.key])
-        activate_url = request.build_absolute_uri(activate_url)
+        activate_url = build_absolute_uri(request,
+                                          activate_url,
+                                          protocol=app_settings.DEFAULT_HTTP_PROTOCOL)
         ctx = {
             "user": self.email_address.user,
             "activate_url": activate_url,
